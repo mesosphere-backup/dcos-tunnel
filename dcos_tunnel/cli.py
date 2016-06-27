@@ -1,6 +1,6 @@
 """
 DCOS Tunnel Subcommand:
-    A DC/OS subcommand that provides SOCKS proxy, HTTP proxy, and VPN access
+    DC/OS subcommand that provides SOCKS proxy, HTTP proxy, and VPN access
     to your DC/OS cluster.
 
 Usage:
@@ -69,11 +69,16 @@ Positional Arguments:
         Command to execute on the DCOS cluster node.
 """
 
+description = """\
+    DC/OS subcommand that provides SOCKS proxy, HTTP proxy, and VPN access
+    to your DC/OS cluster."""
+
 import distutils.spawn
 import getpass
 import os
 import random
 import shlex
+import signal
 import string
 import subprocess
 import sys
@@ -87,7 +92,13 @@ logger = util.get_logger(__name__)
 emitter = emitting.FlatEmitter()
 
 
+def signal_handler(signal, frame):
+    emitter.publish(DefaultError("User interrupted command with Ctrl-C"))
+    sys.exit(0)
+
+
 def main():
+    signal.signal(signal.SIGINT, signal_handler)
     args = docopt.docopt(
         __doc__,
         version='dcos-marathon version {}'.format(constants.version))
@@ -113,7 +124,6 @@ def _cmds():
                       '--master-proxy'],
             function=_socks),
 
-        # XXX change --verbose to use --log-level=DEBUG
         cmds.Command(
             hierarchy=['tunnel', 'http'],
             arg_keys=['--port', '--option', '--config-file', '--user',
@@ -135,11 +145,7 @@ def _info():
     :rtype: int
     """
 
-    # XXX You have to keep this up to date with the description of the
-    # docopt up top.
-    msg = ('A DC/OS subcommand that provides SOCKS proxy, HTTP proxy, ' +
-           'and VPN access to your DC/OS cluster.')
-    emitter.publish(msg)
+    emitter.publish(description)
     return 0
 
 
@@ -312,15 +318,6 @@ def _http(port, option, config_file, user, master_proxy, verbose):
 
     http_proxy = '/opt/mesosphere/bin/octarine'
     proxy_id = rand_str(16)
-
-    scom = "type {0} >/dev/null 2>&1; echo $?".format(http_proxy)
-    check = _ssh(True, None, option, config_file, user, master_proxy, scom,
-                 print_command=False, short_circuit=True, tty=False,
-                 output=True)
-    if int(check.strip()) != 0:
-        msg = "{0} not found, you might need a newer version of DC/OS"
-        emitter.publish(msg.format(http_proxy))
-        return
 
     scom = http_proxy
     if verbose:
