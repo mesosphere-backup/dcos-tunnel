@@ -1,6 +1,6 @@
 alabaster==0.7.6
 Babel==2.1.1
-dcos==0.2.0
+dcos==0.4.6
 docutils==0.12
 futures==3.0.3
 gitdb==0.6.4

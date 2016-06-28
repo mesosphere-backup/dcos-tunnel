@@ -3,19 +3,25 @@
 FROM ubuntu:15.04
 MAINTAINER support@mesosphere.com
 
-RUN apt-get update && apt-get install -y \
-  make \
-  openssh-client \
-  git \
-  sudo \
-&& sudo apt-get update --fix-missing \
-&& sudo apt-get install -y python-dev build-essential \
-&& sudo apt-get install -y python-pip python-virtualenv \
-&& pip install pip --upgrade \
-&& pip install pyinstaller
-
 ADD . /dcos-tunnel
 WORKDIR /dcos-tunnel
-RUN make clean env packages
 
-RUN make binary
+RUN apt-get update --fix-missing && apt-get install -y \
+  build-essential \
+  curl \
+  git \
+  httpie \
+  iputils-ping \
+  jq \
+  make \
+  openssh-client \
+  openvpn \
+  python-dev \
+  python-pip \
+  python-virtualenv \
+  sudo \
+  && pip install pip --upgrade \
+  && pip install pyinstaller pytest \
+  && make binary
+
+ENTRYPOINT ["/dcos-tunnel/bin/entrypoint.sh"]

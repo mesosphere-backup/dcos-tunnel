@@ -69,10 +69,6 @@ Positional Arguments:
         Command to execute on the DCOS cluster node.
 """
 
-description = """\
-    DC/OS subcommand that provides SOCKS proxy, HTTP proxy, and VPN access
-    to your DC/OS cluster."""
-
 import distutils.spawn
 import getpass
 import os
@@ -90,6 +86,10 @@ from dcos_tunnel import constants
 
 logger = util.get_logger(__name__)
 emitter = emitting.FlatEmitter()
+
+description = """\
+    DC/OS subcommand that provides SOCKS proxy, HTTP proxy, and VPN access
+    to your DC/OS cluster."""
 
 
 def signal_handler(signal, frame):

@@ -12,7 +12,7 @@ def test_node_socks_lookup():
     targs = ["--master-proxy", "--port", "1080"]
     args = ("curl --proxy socks5h://127.0.0.1:1080 " +
             "--fail marathon.mesos.mydcos.directory")
-    _, _, ret = _node_tunnel_runner("socks-proxy", targs, args)
+    _, _, ret = _node_tunnel_runner("socks", targs, args)
     assert ret == 0
 
 
@@ -40,7 +40,7 @@ def test_node_http_lookup():
     targs = ["--master-proxy", "--port", local_port]
     args = ("curl --proxy http://127.0.0.1:8800 " +
             "--fail marathon.mesos.mydcos.directory")
-    _, _, ret = _node_tunnel_runner("http-proxy", targs, args)
+    _, _, ret = _node_tunnel_runner("http", targs, args)
     assert ret == 0
     assert not _dangling_proc(['/opt/mesosphere/bin/octarine',
                                '-N -L {0}:127.0.0.1:'.format(local_port)])
@@ -50,10 +50,14 @@ def test_node_http_transparent_lookup():
     local_port = "80"
     targs = ["--master-proxy", "--port", local_port]
     args = "curl --fail marathon.mesos.mydcos.directory"
-    _, _, ret = _node_tunnel_runner("http-proxy", targs, args, sudo=True)
+    _, _, ret = _node_tunnel_runner("http", targs, args, sudo=True)
     assert ret == 0
     assert not _dangling_proc(['/opt/mesosphere/bin/octarine',
                                '-N -L {0}:127.0.0.1:'.format(local_port)])
+
+
+def _is_privileged():
+    return os.geteuid() == 0
 
 
 def _dangling_proc(procstrlist):
@@ -86,10 +90,11 @@ def _node_tunnel(ttype, args, sudo=False):
     cli_test_ssh_key_path = os.environ['CLI_TEST_SSH_KEY_PATH']
 
     sudo_comm = ''
-    if sudo:
-        sudo_comm = 'sudo -n'
+    if sudo and not _is_privileged():
+        sudo_comm = 'sudo -E -n'
     cmd = ('ssh-agent /bin/bash -c "ssh-add {0} 2> /dev/null && ' +
-           '{1} dcos node {2} --option StrictHostKeyChecking=no ' +
+           '{1} $(which dcos-tunnel) tunnel {2} ' +
+           '--option StrictHostKeyChecking=no ' +
            '{3}"').format(cli_test_ssh_key_path, sudo_comm, ttype,
                           ' '.join(args))
 
