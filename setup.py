@@ -23,7 +23,7 @@ setup(
     long_description=long_description,
 
     # The project's main homepage.
-    url='https://github.com/mesosphere/dcos-tunnel',
+    url='https://github.com/dcos/dcos-tunnel',
 
     # Author details
     author='Mesosphere, Inc.',
@@ -57,7 +57,7 @@ setup(
     ],
 
     # What does your project relate to?
-    keywords='dcos command tunnel mesosphere',
+    keywords='dcos command tunnel mesosphere proxy vpn http socks',
 
     # You can just specify the packages manually here if your project is
     # simple. Or you can use find_packages().
