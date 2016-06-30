@@ -1,7 +1,6 @@
 """
-DCOS Tunnel Subcommand:
-    DC/OS subcommand that provides SOCKS proxy, HTTP proxy, and VPN access
-    to your DC/OS cluster.
+Description:
+    SOCKS proxy, HTTP proxy, and VPN access to a DC/OS cluster.
 
 Usage:
     dcos tunnel --info
@@ -32,8 +31,6 @@ Commands:
         cluster.
     vpn
         Establish a VPN over SSH to the master node of your DCOS cluster.
-
-Options:
 
 Options:
     --help
@@ -86,10 +83,6 @@ from dcos_tunnel import constants
 
 logger = util.get_logger(__name__)
 emitter = emitting.FlatEmitter()
-
-description = """\
-    DC/OS subcommand that provides SOCKS proxy, HTTP proxy, and VPN access
-    to your DC/OS cluster."""
 
 
 def signal_handler(signal, frame):
@@ -145,7 +138,7 @@ def _info():
     :rtype: int
     """
 
-    emitter.publish(description)
+    emitter.publish("Proxy and VPN access to DC/OS cluster")
     return 0
 
 
