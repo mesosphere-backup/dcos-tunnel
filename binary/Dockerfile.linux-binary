@@ -20,8 +20,14 @@ RUN apt-get update --fix-missing && apt-get install -y \
   python-pip \
   python-virtualenv \
   sudo \
+  zip \
   && pip install pip --upgrade \
   && pip install pyinstaller pytest \
-  && make binary
+  && make binary \
+  && mkdir -p tmp/bin \
+  && cp -p dist/dcos-tunnel tmp/bin \
+  && cd tmp \
+  && zip -r dcos-tunnel.zip bin/ \
+  && mv dcos-tunnel.zip ..
 
 ENTRYPOINT ["/dcos-tunnel/bin/entrypoint.sh"]
