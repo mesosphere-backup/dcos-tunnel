@@ -63,6 +63,7 @@ def _is_privileged():
 def _dangling_proc(procstrlist):
     stdout, _, _ = ssh_output(['ps', 'aux'])
     for line in stdout.splitlines():
+        line = line.decode()
         for pstr in procstrlist:
             if pstr in line:
                 return True

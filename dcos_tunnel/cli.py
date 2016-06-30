@@ -182,6 +182,8 @@ def _ssh(leader, slave, option, config_file, user, master_proxy, command,
     """
 
     ssh_options = util.get_ssh_options(config_file, option)
+    ssh_options += " -o StrictHostKeyChecking=no "
+
     dcos_client = mesos.DCOSClient()
     flagstr = " ".join(flag)
 
@@ -323,6 +325,7 @@ def _http(port, option, config_file, user, master_proxy, verbose):
     remote_port = _ssh(True, None, option, config_file, user, master_proxy,
                        scom, print_command=False, short_circuit=True,
                        output=True, tty=False)
+    remote_port = remote_port.decode()
 
     msg = 'HTTP proxy listening locally on port {0}, remotely on port {1}'
     emitter.publish(msg.format(port, remote_port))
@@ -362,6 +365,7 @@ def gen_hosts(option, config_file, user, master_proxy):
                   print_command=False, short_circuit=True, output=True,
                   tty=False)
     for line in output.splitlines():
+        line = line.decode()
         if line.startswith('nameserver'):
             host = line.strip().split()[1]
             dns_hosts.append(host)
@@ -379,6 +383,24 @@ def container_cp(option, config_file, user, master_proxy,
                   output=True, tty=False)
     os.write(local_file, output)
     os.fsync(local_file)
+
+
+def run_vpn(command, output_file):
+    # This is wrapped because of python v2/v3 incompatibilities
+
+    if sys.version_info >= (3, 0):
+        # Since we call sudo in a subprocess the calling process
+        # (this process), which is owned by the user, does not have
+        # the privileges to kill the root-owned sudo subprocess
+        try:
+            ret = subprocess.call(shlex.split(command), stdout=output_file,
+                                  stderr=output_file)
+        except PermissionError:
+            ret = 3
+    else:
+        ret = subprocess.call(shlex.split(command), stdout=output_file,
+                              stderr=output_file)
+    return ret
 
 
 def _vpn(port, option, config_file, user, master_proxy, openvpn_container):
@@ -480,6 +502,7 @@ def _vpn(port, option, config_file, user, master_proxy, openvpn_container):
         remote_port = _ssh(True, None, option, config_file, user, master_proxy,
                            scom, print_command=False, short_circuit=True,
                            output=True, tty=False)
+        remote_port = remote_port.decode()
 
         fwd_flag = '-N -L {0}:127.0.0.1:{1}'.format(port, remote_port)
         tunnel = _ssh(True, None, option, config_file, user, master_proxy,
@@ -501,8 +524,7 @@ def _vpn(port, option, config_file, user, master_proxy, openvpn_container):
         emitter.publish("\nVPN server output at {0}".format(serverpath))
         emitter.publish("VPN client output at {0}\n".format(clientpath))
 
-        ret = subprocess.call(shlex.split(vpn_com), stdout=clientfile,
-                              stderr=clientfile)
+        ret = run_vpn(vpn_com, clientfile)
 
         vpn_server.communicate()
         tunnel.communicate()
