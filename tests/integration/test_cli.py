@@ -77,7 +77,14 @@ def _node_tunnel_runner(ttype, tunnel_args, args, delay=5, sudo=False):
     if sys.platform == 'win32':
         os.kill(tunnel.pid, signal.CTRL_BREAK_EVENT)
     else:
-        os.killpg(os.getpgid(tunnel.pid), signal.SIGTERM)
+        try:
+            os.killpg(os.getpgid(tunnel.pid), signal.SIGTERM)
+        except OSError:
+            print("ERROR: Process did not exist")
+
+    tout, terr = tunnel.communicate()
+    print('Runner STDOUT: {}'.format(tout.decode('utf-8')))
+    print('Runner STDERR: {}'.format(terr.decode('utf-8')))
 
     return (stdout, stderr, ret)
 
@@ -107,4 +114,5 @@ def _node_tunnel(ttype, args, sudo=False):
         cflag = subprocess.CREATE_NEW_PROCESS_GROUP
 
     return subprocess.Popen(shlex.split(cmd), preexec_fn=pfn,
-                            creationflags=cflag)
+                            creationflags=cflag, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE)
