@@ -94,7 +94,7 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
     args = docopt.docopt(
         __doc__,
-        version='dcos-marathon version {}'.format(constants.version))
+        version=constants.version)
 
     return cmds.execute(_cmds(), args)
 
