@@ -1,6 +1,6 @@
-# DC/OS Tunnel Subcommand
+# DC/OS CLI Tunnel Subcommand
 
-A DC/OS subcommand that provides SOCKS proxy, HTTP proxy, and VPN access
+A DC/OS CLI subcommand that provides SOCKS proxy, HTTP proxy, and VPN access
 to your DC/OS cluster.
 
 <br>
@@ -29,10 +29,16 @@ Create a virtualenv for the project:
 make env
 ```
 
+Test it with:
+
+```
+./env/bin/dcos-tunnel
+```
+
 ##Binary
 
 ```
-make local-binary
+make binary
 ```
 
 Run it with:
@@ -44,44 +50,14 @@ Run it with:
 
 ##Running Tests
 
-###Setup
-
-Tox, our test runner, tests against both Python 2.7 and Python 3.4 environments.
-
-If you're using OS X, be sure to use the officially distributed Python 3.4 installer since the
-Homebrew version is missing a necessary library.
-
-###Running
-
-Tox will run unit and integration tests in both Python environments using a temporarily created
-virtualenv.
-
-You should ensure `DCOS_CONFIG` is set and that the config file points to the Marathon
-instance you want to use for integration tests.
-
-There are two ways to run tests, you can either use the virtualenv created by `make env`
-above:
+Syntax check:
 
 ```
 make test
 ```
 
-Or, assuming you have tox installed:
+Syntax check + Integration test:
 
 ```
-tox
-```
-
-##Other Useful Commands
-
-List all of the supported test environments:
-
-```
-tox --listenvs
-```
-
-Run a specific set of tests:
-
-```
-tox -e <testenv>
+make test-binary
 ```
