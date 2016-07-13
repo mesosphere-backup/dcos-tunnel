@@ -29,7 +29,7 @@ Create a virtualenv for the project:
 make env
 ```
 
-Test it with:
+Try it out with:
 
 ```
 ./env/bin/dcos-tunnel

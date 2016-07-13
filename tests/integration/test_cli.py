@@ -8,52 +8,46 @@ import time
 from common import ssh_output
 
 
-def test_node_socks_lookup():
-    targs = ["--master-proxy", "--port", "1080"]
-    args = ("curl --proxy socks5h://127.0.0.1:1080 " +
+def test_socks_lookup():
+    targs = ["--option StrictHostKeyChecking=no", "--port", "1080"]
+    args = ("curl -sS -v --proxy socks5h://127.0.0.1:1080 " +
             "--fail marathon.mesos.mydcos.directory")
-    _, _, ret = _node_tunnel_runner("socks", targs, args)
+    _, _, ret = _tunnel_runner("socks", targs, args)
     assert ret == 0
 
 
-def test_node_vpn_lookup():
+def test_vpn_lookup():
     if sys.platform == 'win32':
         # VPN is currently unsupported on Windows
         return
     local_port = "1194"
-    targs = ["--master-proxy", "--port", local_port]
+    targs = ["--port", local_port]
 
-    # XXX This is the hard-coded IP address of a DNS host
-    # I'd like to `curl marathon.mesos` but it seems like the option to set
-    # the DNS server through OpenVPN doesn't work
-    args = "ping -c1 198.51.100.1"
+    # XXX Hard-coded IP address of a DNS host from within a DC/OS cluster
+    dns_host = '198.51.100.1'
+    args = ("ping -c1 $(host -t A master.mesos {} | ".format(dns_host) +
+            "tail -n1 | rev | cut -f1 -d' ' | rev)")
 
-    _, _, ret = _node_tunnel_runner("vpn", targs, args, delay=20)
+    _, _, ret = _tunnel_runner("vpn", targs, args, delay=10, sudo=True)
     assert ret == 0
-    assert not _dangling_proc(['OPENVPN_ROUTES=',
-                               '-N -L {0}:127.0.0.1:'.format(local_port),
-                               'openvpn --config'])
+    assert not _dangling_proc(['openvpn --config'])
 
 
-def test_node_http_lookup():
+def test_http_lookup():
     local_port = "8800"
-    targs = ["--master-proxy", "--port", local_port]
-    args = ("curl --proxy http://127.0.0.1:8800 " +
+    targs = ["--port", local_port]
+    args = ("curl -sS -v --proxy http://127.0.0.1:8800 " +
             "--fail marathon.mesos.mydcos.directory")
-    _, _, ret = _node_tunnel_runner("http", targs, args)
+    _, _, ret = _tunnel_runner("http", targs, args)
     assert ret == 0
-    assert not _dangling_proc(['/opt/mesosphere/bin/octarine',
-                               '-N -L {0}:127.0.0.1:'.format(local_port)])
 
 
-def test_node_http_transparent_lookup():
+def test_http_transparent_lookup():
     local_port = "80"
-    targs = ["--master-proxy", "--port", local_port]
-    args = "curl --fail marathon.mesos.mydcos.directory"
-    _, _, ret = _node_tunnel_runner("http", targs, args, sudo=True)
+    targs = ["--port", local_port]
+    args = "curl -sS -v --fail marathon.mesos.mydcos.directory"
+    _, _, ret = _tunnel_runner("http", targs, args, sudo=True)
     assert ret == 0
-    assert not _dangling_proc(['/opt/mesosphere/bin/octarine',
-                               '-N -L {0}:127.0.0.1:'.format(local_port)])
 
 
 def _is_privileged():
@@ -70,18 +64,24 @@ def _dangling_proc(procstrlist):
     return False
 
 
-def _node_tunnel_runner(ttype, tunnel_args, args, delay=5, sudo=False):
-    tunnel = _node_tunnel(ttype, tunnel_args, sudo=sudo)
+def _tunnel_runner(ttype, tunnel_args, args, delay=5, sudo=False):
+    tunnel = _tunnel(ttype, tunnel_args, sudo=sudo)
     time.sleep(delay)
     stdout, stderr, ret = ssh_output(args)
 
     if sys.platform == 'win32':
         os.kill(tunnel.pid, signal.CTRL_BREAK_EVENT)
     else:
-        try:
-            os.killpg(os.getpgid(tunnel.pid), signal.SIGTERM)
-        except OSError:
-            print("ERROR: Process did not exist")
+        if sudo:
+            cmd = ("sudo python -c 'import os, signal; "
+                   "os.killpg(os.getpgid({}), signal.SIGTERM)'"
+                   ).format(tunnel.pid)
+            subprocess.call(shlex.split(cmd))
+        else:
+            try:
+                os.killpg(os.getpgid(tunnel.pid), signal.SIGTERM)
+            except OSError:
+                print("ERROR: Process did not exist")
 
     tout, terr = tunnel.communicate()
     print('Runner STDOUT: {}'.format(tout.decode('utf-8')))
@@ -90,21 +90,15 @@ def _node_tunnel_runner(ttype, tunnel_args, args, delay=5, sudo=False):
     return (stdout, stderr, ret)
 
 
-def _node_tunnel(ttype, args, sudo=False):
-    if os.environ.get('CLI_TEST_MASTER_PROXY') and \
-            '--master-proxy' not in args:
-        args.append('--master-proxy')
-
+def _tunnel(ttype, args, sudo=False):
     cli_test_ssh_key_path = os.environ['CLI_TEST_SSH_KEY_PATH']
 
     sudo_comm = ''
     if sudo and not _is_privileged():
         sudo_comm = 'sudo -E -n'
     cmd = ('ssh-agent /bin/bash -c "ssh-add {0} 2> /dev/null && ' +
-           '{1} $(which dcos-tunnel) tunnel {2} ' +
-           '--option StrictHostKeyChecking=no ' +
-           '{3}"').format(cli_test_ssh_key_path, sudo_comm, ttype,
-                          ' '.join(args))
+           '{1} $(which dcos-tunnel) tunnel {2} {3}"'
+           ).format(cli_test_ssh_key_path, sudo_comm, ttype, ' '.join(args))
 
     pfn = None
     if sys.platform != 'win32':
@@ -114,6 +108,7 @@ def _node_tunnel(ttype, args, sudo=False):
     if sys.platform == 'win32':
         cflag = subprocess.CREATE_NEW_PROCESS_GROUP
 
+    print(cmd)
     return subprocess.Popen(shlex.split(cmd), preexec_fn=pfn,
                             creationflags=cflag, stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE)

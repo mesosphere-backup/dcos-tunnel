@@ -3,7 +3,7 @@
 BASEDIR=`dirname $0`/..
 
 if [ ! -d "$BASEDIR/env" ]; then
-    virtualenv -q $BASEDIR/env --prompt='(dcos-tunnel) '
+    virtualenv -p python3 -q $BASEDIR/env --prompt='(dcos-tunnel) '
     echo "Virtualenv created."
 
     source $BASEDIR/env/bin/activate

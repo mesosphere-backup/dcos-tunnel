@@ -1,5 +1,3 @@
-# This image runs the dcos-cli test suite.
-
 FROM ubuntu:15.04
 MAINTAINER support@mesosphere.com
 
@@ -9,19 +7,21 @@ WORKDIR /dcos-tunnel
 RUN apt-get update --fix-missing && apt-get install -y \
   build-essential \
   curl \
+  dnsutils \
   git \
   httpie \
   iputils-ping \
   jq \
+  libffi-dev \
+  libssl-dev \
   make \
   openssh-client \
   openvpn \
-  python-dev \
+  python3-dev \
   python-pip \
   python-virtualenv \
   sudo \
   zip \
-  && pip install pip --upgrade \
   && pip install pyinstaller pytest \
   && make binary \
   && mkdir -p tmp/bin \

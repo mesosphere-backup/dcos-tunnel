@@ -3,6 +3,10 @@ all: env test packages
 clean:
 	bin/clean.sh
 
+clean-cache:
+	find . -name '*.pyc' | xargs rm
+	find . -name '__pycache__' | xargs rm -rf
+
 env:
 	bin/env.sh
 
