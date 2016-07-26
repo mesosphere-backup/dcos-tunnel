@@ -3,7 +3,9 @@ Description:
     SOCKS proxy, HTTP proxy, and VPN access to a DC/OS cluster.
 
 Usage:
-    dcos tunnel --info
+    dcos tunnel [--info]
+                [--version]
+                [--help]
     dcos tunnel socks [--port=<local-port>]
                       [--config-file=<path>]
                       [--user=<user>]
