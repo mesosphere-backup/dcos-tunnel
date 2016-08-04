@@ -2,6 +2,11 @@
 Description:
     SOCKS proxy, HTTP proxy, and VPN access to a DC/OS cluster.
 
+    *** For commands that port forward, send traffic over the
+    tunnel by appending `.mydcos.directory` to the domain
+    (e.g. http://example.com:8080/?query=hello becomes
+    http://example.com.mydcos.directory:8080/?query=hello).
+
 Usage:
     dcos tunnel [--info]
                 [--version]
@@ -26,10 +31,10 @@ Usage:
 Commands:
     socks
         Establish a SOCKS proxy over SSH to the master node of your DCOS
-        cluster.
+        cluster. (Port forwards! See "Description")
     http
         Establish a HTTP proxy over SSH to the master node of your DCOS
-        cluster.
+        cluster. (Port forwards! See "Description")
     vpn
         Establish a VPN over SSH to the master node of your DCOS cluster.
 
@@ -46,7 +51,7 @@ Options:
         The SSH options. For information, enter `man ssh_config` in your
         terminal.
     --user=<user>
-        The SSH user, where the default user [default: core].
+        The SSH user [default: core].
     --verbose
         Verbose output
     --port=<local-port>
@@ -58,7 +63,7 @@ Options:
     --client=<path>
         The OpenVPN client to run [default: openvpn]
     --privileged
-        Assume the user is of 'superuser' or 'Administrator" equivalent
+        Assume the user is of "superuser" or "Administrator" equivalent
 """
 
 import binascii
