@@ -260,6 +260,7 @@ class CustomWarningPolicy(paramiko.MissingHostKeyPolicy):
                          binascii.hexlify(key.get_fingerprint()).decode())
         logger.warning(msg)
 
+
 def get_host(host):
     if not host:
         dcos_client = mesos.DCOSClient()
@@ -269,6 +270,7 @@ def get_host(host):
     if not host:
         raise DCOSException("*** No host detected. Please set one manually.")
     return host
+
 
 def sshclient(config_file, user, port, host):
 
@@ -516,7 +518,8 @@ def run_vpn(command, output_file):
                            stderr=output_file)
 
 
-def _vpn(port, config_file, user, privileged, ssh_port, host, openvpn_container, vpn_client):
+def _vpn(port, config_file, user, privileged, ssh_port, host,
+         openvpn_container, vpn_client):
     """
     VPN into a DC/OS cluster using the IP addresses found in master's
     state.json
