@@ -15,16 +15,22 @@ Usage:
                       [--config-file=<path>]
                       [--user=<user>]
                       [--privileged]
+                      [--sport=<ssh_port>]
+                      [--host=<host>]
                       [--option SSHOPT=VAL ...]
     dcos tunnel http [--port=<local-port>]
                      [--config-file=<path>]
                      [--user=<user>]
                      [--privileged]
+                     [--sport=<ssh_port>]
+                     [--host=<host>]
                      [--verbose]
     dcos tunnel vpn [--port=<local-port>]
                     [--config-file=<path>]
                     [--user=<user>]
                     [--privileged]
+                    [--sport=<ssh_port>]
+                    [--host=<host>]
                     [--container=<container>]
                     [--client=<path>]
 
@@ -64,6 +70,11 @@ Options:
         The OpenVPN client to run [default: openvpn]
     --privileged
         Assume the user is of "superuser" or "Administrator" equivalent
+    --sport=<ssh_port>
+        The port that SSH is listening on
+    --host=<host>
+        Manually specify which host to connect to (it will override attempts to
+        detect which host to connect to)
 """
 
 import binascii
@@ -138,19 +149,19 @@ def _cmds():
         cmds.Command(
             hierarchy=['tunnel', 'socks'],
             arg_keys=['--port', '--config-file', '--user', '--privileged',
-                      '--option'],
+                      '--sport', '--host', '--option'],
             function=_socks),
 
         cmds.Command(
             hierarchy=['tunnel', 'http'],
             arg_keys=['--port', '--config-file', '--user', '--privileged',
-                      '--verbose'],
+                      '--sport', '--host', '--verbose'],
             function=_http),
 
         cmds.Command(
             hierarchy=['tunnel', 'vpn'],
             arg_keys=['--port', '--config-file', '--user', '--privileged',
-                      '--container', '--client'],
+                      '--sport', '--host', '--container', '--client'],
             function=_vpn),
     ]
 
@@ -249,8 +260,17 @@ class CustomWarningPolicy(paramiko.MissingHostKeyPolicy):
                          binascii.hexlify(key.get_fingerprint()).decode())
         logger.warning(msg)
 
+def get_host(host):
+    if not host:
+        dcos_client = mesos.DCOSClient()
+        host = dcos_client.metadata().get('PUBLIC_IPV4')
+    if not host:
+        host = mesos.MesosDNSClient().hosts('leader.mesos.')[0]['ip']
+    if not host:
+        raise DCOSException("*** No host detected. Please set one manually.")
+    return host
 
-def sshclient(config_file, user):
+def sshclient(config_file, user, port, host):
 
     # XXX Should probably also deal with keepalives if the user has
     #   it in their config
@@ -267,19 +287,18 @@ def sshclient(config_file, user):
                "run `ssh-agent`, then add your private key with `ssh-add`.")
         raise DCOSException(msg)
 
-    port = 22
-    dcos_client = mesos.DCOSClient()
-    host = dcos_client.metadata().get('PUBLIC_IPV4')
-    if not host:
-        host = mesos.MesosDNSClient().hosts('leader.mesos.')[0]['ip']
-
+    host = get_host(host)
     client = paramiko.SSHClient()
     client.load_system_host_keys()
     client.set_missing_host_key_policy(CustomWarningPolicy())
 
     config = parse_config(config_file, host)
-    if config is not None and config['port']:
-        port = config['port']
+    if port is None:
+        if config is not None and config['port']:
+            port = config['port']
+        else:
+            port = 22
+    port = int(port)
 
     try:
         client.connect(host, port=port, username=user)
@@ -331,21 +350,25 @@ def validate_port(port, default=None):
     return port
 
 
-def _socks(port, config_file, user, privileged, option):
+def _socks(port, config_file, user, privileged, ssh_port, host, option):
     """
     SOCKS proxy into a DC/OS node using the IP addresses found in master's
     state.json
 
     :param port: The port the SOCKS proxy listens on locally
     :type port: int | None
-    :param option: SSH option
-    :type option: [str]
     :param config_file: SSH config file
     :type config_file: str | None
     :param user: SSH user
     :type user: str | None
     :param privileged: If True, override privilege checks
     :type privileged: bool
+    :param ssh_port: The port SSH is accessible through
+    :type ssh_port: int | None
+    :param host: The host to connect to
+    :type host: str | None
+    :param option: SSH option
+    :type option: [str]
     :returns: process return code
     :rtype: int
     """
@@ -356,11 +379,11 @@ def _socks(port, config_file, user, privileged, option):
     if port is None:
         return 1
 
+    if ssh_port is not None:
+        option.append("Port={}".format(ssh_port))
+
     ssh_options = util.get_ssh_options(config_file, option)
-    dcos_client = mesos.DCOSClient()
-    host = dcos_client.metadata().get('PUBLIC_IPV4')
-    if not host:
-        host = mesos.MesosDNSClient().hosts('leader.mesos.')[0]['ip']
+    host = get_host(host)
 
     scom = "ssh -N -D {} {} {}@{}".format(port, ssh_options, user, host)
 
@@ -393,7 +416,7 @@ def logging_exec(ssh_client, ssh_command, outputlog, raw=False):
         line = stdout.readline()
 
 
-def _http(port, config_file, user, privileged, verbose):
+def _http(port, config_file, user, privileged, ssh_port, host, verbose):
     """
     Proxy HTTP traffic into a DC/OS cluster using the IP addresses found in
     master's state.json
@@ -406,6 +429,10 @@ def _http(port, config_file, user, privileged, verbose):
     :type user: str | None
     :param privileged: If True, override privilege checks
     :type privileged: bool
+    :param ssh_port: The port SSH is accessible through
+    :type ssh_port: int | None
+    :param host: The host to connect to
+    :type host: str | None
     :param verbose: Verbose output
     :type verbose: bool
     :returns: process return code
@@ -417,7 +444,7 @@ def _http(port, config_file, user, privileged, verbose):
     port = validate_port(port, default=80)
     if port is None:
         return 1
-    client = sshclient(config_file, user)
+    client = sshclient(config_file, user, ssh_port, host)
 
     http_proxy = '/opt/mesosphere/bin/octarine'
     proxy_id = rand_str(16)
@@ -489,7 +516,7 @@ def run_vpn(command, output_file):
                            stderr=output_file)
 
 
-def _vpn(port, config_file, user, privileged, openvpn_container, vpn_client):
+def _vpn(port, config_file, user, privileged, ssh_port, host, openvpn_container, vpn_client):
     """
     VPN into a DC/OS cluster using the IP addresses found in master's
     state.json
@@ -502,6 +529,10 @@ def _vpn(port, config_file, user, privileged, openvpn_container, vpn_client):
     :type user: str | None
     :param privileged: If True, override privilege checks
     :type privileged: bool
+    :param ssh_port: The port SSH is accessible through
+    :type ssh_port: int | None
+    :param host: The host to connect to
+    :type host: str | None
     :param openvpn_container: `docker pull <param>` should work
     :type openvpn_container: str
     :param vpn_client: Relative or absolute path to openvpn client
@@ -531,7 +562,7 @@ def _vpn(port, config_file, user, privileged, openvpn_container, vpn_client):
     port = validate_port(port, default=1194)
     if port is None:
         return 1
-    client = sshclient(config_file, user)
+    client = sshclient(config_file, user, ssh_port, host)
 
     if not distutils.spawn.find_executable(vpn_client):
         msg = ("You don't seem to have the '{}' executable. Please add it to "
