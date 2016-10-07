@@ -462,8 +462,23 @@ def _http(port, config_file, user, privileged, ssh_port, host, verbose):
     http_proxy_server.start()
 
     scom = "{} --client --port {}".format(http_proxy, proxy_id)
-    _, query_stdout, _ = client.exec_command(scom, get_pty=True)
-    remote_port = int(query_stdout.read().decode().strip())
+    remote_port = None
+    query_success = False
+    for i in range(5):
+        # XXX There's a really strange bug where stderr is bleeding into
+        #   stdout. What occurs is that a single line of the stderr sneaks
+        #   into stdout along with the intended stdout. Since this isn't a
+        #   problem with this code, we'll just retry several times.
+        _, query_stdout, _ = client.exec_command(scom, get_pty=True)
+        try:
+            remote_port = int(query_stdout.read().decode().strip())
+            query_success = True
+            break
+        except ValueError as e:
+            msg = "port query failed: {}"
+            logger.error(msg.format(repr(e)))
+    if not query_success:
+        raise DCOSException("*** Too many errors during port query")
 
     msg = 'HTTP proxy listening locally on port {}, remotely on port {}'
     emitter.publish(msg.format(port, remote_port))
