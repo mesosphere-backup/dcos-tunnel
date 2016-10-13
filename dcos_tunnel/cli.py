@@ -2,11 +2,6 @@
 Description:
     SOCKS proxy, HTTP proxy, and VPN access to a DC/OS cluster.
 
-    *** For commands that port forward, send traffic over the
-    tunnel by appending `.mydcos.directory` to the domain
-    (e.g. http://example.com:8080/?query=hello becomes
-    http://example.com.mydcos.directory:8080/?query=hello).
-
 Usage:
     dcos tunnel [--info]
                 [--version]
@@ -38,10 +33,18 @@ Usage:
 Commands:
     socks
         Establish a SOCKS proxy over SSH to the master node of your DC/OS
-        cluster. (Port forwards! See "Description")
+        cluster.
+
     http
         Establish a HTTP proxy over SSH to the master node of your DC/OS
-        cluster. (Port forwards! See "Description")
+        cluster.
+
+        When bound to port 80, the HTTP proxy operates in "transparent" mode
+        where applications do not need to be configured to use the proxy, but
+        additionally requires appending `.mydcos.directory` to the domain
+        (e.g. http://example.com:8080/?query=hello becomes
+        http://example.com.mydcos.directory:8080/?query=hello).
+
     vpn
         Establish a VPN over SSH to the master node of your DC/OS cluster.
 
