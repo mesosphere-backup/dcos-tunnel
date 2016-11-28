@@ -33,16 +33,17 @@ Usage:
                     [--host=<host>]
                     [--container=<container>]
                     [--client=<path>]
+                    [--remote-docker=<docker-command>]
 
 Commands:
     socks
-        Establish a SOCKS proxy over SSH to the master node of your DCOS
+        Establish a SOCKS proxy over SSH to the master node of your DC/OS
         cluster. (Port forwards! See "Description")
     http
-        Establish a HTTP proxy over SSH to the master node of your DCOS
+        Establish a HTTP proxy over SSH to the master node of your DC/OS
         cluster. (Port forwards! See "Description")
     vpn
-        Establish a VPN over SSH to the master node of your DCOS cluster.
+        Establish a VPN over SSH to the master node of your DC/OS cluster.
 
 Options:
     --help
@@ -75,6 +76,8 @@ Options:
     --host=<host>
         Manually specify which host to connect to (it will override attempts to
         detect which host to connect to)
+    --remote-docker=<docker-command>
+        The Docker client command to run on the remote DC/OS master
 """
 
 import binascii
@@ -161,7 +164,8 @@ def _cmds():
         cmds.Command(
             hierarchy=['tunnel', 'vpn'],
             arg_keys=['--port', '--config-file', '--user', '--privileged',
-                      '--sport', '--host', '--container', '--client'],
+                      '--sport', '--host', '--container', '--client',
+                      '--remote-docker'],
             function=_vpn),
     ]
 
@@ -180,9 +184,15 @@ def _info():
     return 0
 
 
-def ssh_exec_wait(output):
-    _, stdout, _ = output
-    stdout.channel.recv_exit_status()
+def ssh_exec_fatal(client, scom, hint=None):
+    _, query_stdout, _ = client.exec_command(scom, get_pty=True)
+    if query_stdout.channel.recv_exit_status() == 0:
+        return query_stdout
+    else:
+        msg = '*** Failed to execute: {}'.format(scom)
+        if hint:
+            msg += '\n*** {}'.format(hint)
+        raise DCOSException(msg)
 
 
 def forward_tunnel(local_port, remote_host, remote_port, transport):
@@ -519,11 +529,11 @@ def gen_hosts(ssh_client):
     return (mesos_hosts, dns_hosts)
 
 
-def container_cp(ssh_client, container_name, remote_filepath, local_file):
-    scom = 'docker exec {} bash -c "cat {}"'
-    scom = scom.format(container_name, remote_filepath)
-    _, query_stdout, _ = ssh_client.exec_command(scom, get_pty=True)
-    os.write(local_file, query_stdout.read())
+def container_cp(ssh_client, container_name, remote_filepath, local_file,
+                 docker_cmd):
+    scom = '{} exec {} bash -c "cat {}"'
+    scom = scom.format(docker_cmd, container_name, remote_filepath)
+    os.write(local_file, ssh_exec_fatal(ssh_client, scom).read())
     os.fsync(local_file)
 
 
@@ -534,7 +544,7 @@ def run_vpn(command, output_file):
 
 
 def _vpn(port, config_file, user, privileged, ssh_port, host,
-         openvpn_container, vpn_client):
+         openvpn_container, vpn_client, docker_cmd):
     """
     VPN into a DC/OS cluster using the IP addresses found in master's
     state.json
@@ -555,6 +565,8 @@ def _vpn(port, config_file, user, privileged, ssh_port, host,
     :type openvpn_container: str
     :param vpn_client: Relative or absolute path to openvpn client
     :type vpn_client: str
+    :param docker_cmd: The docker client command
+    :type docker_cmd: str | None
     :returns: process return code
     :rtype: int
     """
@@ -611,11 +623,30 @@ def _vpn(port, config_file, user, privileged, ssh_port, host,
         clientconfigfile, clientconfigpath = config_tup
         clientfile, clientpath = client_tup
 
+        try_sudo = False
+        if docker_cmd is None:
+            docker_cmd = 'docker'
+            try_sudo = True
+        scom = '{} version'.format(docker_cmd)
+        try:
+            ssh_exec_fatal(client, scom)
+        except DCOSException:
+            if try_sudo:
+                docker_cmd = 'sudo ' + docker_cmd
+                scom = '{} version'.format(docker_cmd)
+                ssh_exec_fatal(client, scom,
+                               ("Unable to run 'docker' or 'sudo docker' on "
+                                "the remote master. Try specifying a custom "
+                                "Docker client command using the "
+                                "--remote-docker argument."))
+            else:
+                raise
+
         scom = """\
-               docker run --rm --cap-add=NET_ADMIN -p 0:1194 \
+               {} run --rm --cap-add=NET_ADMIN -p 0:1194 \
                -e "OPENVPN_ROUTES={}" -e "OPENVPN_DNS={}" --name {} {}\
-               """.format(parsed_routes, parsed_dns, container_name,
-                          openvpn_container)
+               """.format(docker_cmd, parsed_routes, parsed_dns,
+                          container_name, openvpn_container)
 
         # FDs created when python opens a file have O_CLOEXEC set, which
         # makes them invalid in new threads (cloning). So we duplicate the
@@ -632,25 +663,26 @@ def _vpn(port, config_file, user, privileged, ssh_port, host,
 
         msg = "\nWaiting for VPN server in container '{}' to come up..."
         emitter.publish(msg.format(container_name))
-        scom = ("until "
-                """[ "$(docker inspect --format='{{ .State.Running }}' """
-                """%s 2>/dev/null)" = "true" ] 2>/dev/null; do sleep 0.5; """
-                """done""") % (container_name)
-        scom += (";"
-                 """docker exec {} "sh -c 'until [ -s {} ]; do sleep 0.5; """
-                 """done'" """).format(container_name, remote_keyfile)
-        scom += (";"
-                 """docker exec {} "sh -c 'until [ -s {} ]; do sleep 0.5; """
-                 """done'" """).format(container_name, remote_clientfile)
-        server_setup = client.exec_command(scom, get_pty=True)
-        ssh_exec_wait(server_setup)
 
-        scom = ("""docker inspect --format='"""
+        scom = ("until "
+                """[ "$(%s inspect --format='{{ .State.Running }}' """
+                """%s 2>/dev/null)" = "true" ] 2>/dev/null; do sleep 0.5; """
+                """done""") % (docker_cmd, container_name)
+        scom += (" && "
+                 """{} exec {} sh -c 'until [ -s {} ]; do sleep 0.5; """
+                 """done' """).format(docker_cmd, container_name,
+                                      remote_keyfile)
+        scom += (" && "
+                 """{} exec {} sh -c 'until [ -s {} ]; do sleep 0.5; """
+                 """done' """).format(docker_cmd, container_name,
+                                      remote_clientfile)
+        ssh_exec_fatal(client, scom)
+
+        scom = ("""%s inspect --format='"""
                 """{{range $p, $conf := .NetworkSettings.Ports}}"""
                 """{{(index $conf 0).HostPort}}{{end}}' %s"""
-                ) % (container_name)
-        _, query_stdout, _ = client.exec_command(scom, get_pty=True)
-        remote_port = int(query_stdout.read().decode().strip())
+                ) % (docker_cmd, container_name)
+        remote_port = int(ssh_exec_fatal(client, scom).read().decode().strip())
 
         def tunnel_def():
             ssh_transport = client.get_transport()
@@ -658,11 +690,12 @@ def _vpn(port, config_file, user, privileged, ssh_port, host,
         tunnel = threading.Thread(target=tunnel_def, daemon=True)
         tunnel.start()
 
-        container_cp(client, container_name, remote_keyfile, keyfile)
+        container_cp(client, container_name, remote_keyfile, keyfile,
+                     docker_cmd)
         container_cp(client, container_name, remote_clientfile,
-                     clientconfigfile)
+                     clientconfigfile, docker_cmd)
 
-        vpn_com = ('{} --config {} --secret {} --port {}')
+        vpn_com = '{} --config {} --secret {} --port {}'
         vpn_com = vpn_com.format(vpn_client, clientconfigpath, keypath, port)
 
         emitter.publish("\nVPN server output at {}".format(serverpath))
