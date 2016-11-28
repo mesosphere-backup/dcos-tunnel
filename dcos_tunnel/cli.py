@@ -603,6 +603,25 @@ def _vpn(port, config_file, user, privileged, ssh_port, host,
         logger.error(msg.format(vpn_client))
         return 1
 
+    try_sudo = False
+    if docker_cmd is None:
+        docker_cmd = 'docker'
+        try_sudo = True
+    scom = '{} version'.format(docker_cmd)
+    try:
+        hint = "`{}` not a valid Docker client".format(docker_cmd)
+        ssh_exec_fatal(client, scom, hint=hint)
+    except DCOSException:
+        if try_sudo:
+            docker_cmd = 'sudo --non-interactive ' + docker_cmd
+            scom = '{} version'.format(docker_cmd)
+            hint = ("Unable to run `docker` or `sudo docker` on the remote " +
+                    "master. Try specifying a custom Docker client command " +
+                    "using the --remote-docker argument.")
+            ssh_exec_fatal(client, scom, hint=hint)
+        else:
+            raise
+
     mesos_hosts, dns_hosts = gen_hosts(client)
     container_name = "openvpn-{}".format(rand_str(8))
     remote_openvpn_dir = "/etc/openvpn"
@@ -625,25 +644,6 @@ def _vpn(port, config_file, user, privileged, ssh_port, host,
         keyfile, keypath = key_tup
         clientconfigfile, clientconfigpath = config_tup
         clientfile, clientpath = client_tup
-
-        try_sudo = False
-        if docker_cmd is None:
-            docker_cmd = 'docker'
-            try_sudo = True
-        scom = '{} version'.format(docker_cmd)
-        try:
-            ssh_exec_fatal(client, scom)
-        except DCOSException:
-            if try_sudo:
-                docker_cmd = 'sudo ' + docker_cmd
-                scom = '{} version'.format(docker_cmd)
-                ssh_exec_fatal(client, scom,
-                               ("Unable to run 'docker' or 'sudo docker' on "
-                                "the remote master. Try specifying a custom "
-                                "Docker client command using the "
-                                "--remote-docker argument."))
-            else:
-                raise
 
         scom = """\
                {} run --rm --cap-add=NET_ADMIN -p 0:1194 \
