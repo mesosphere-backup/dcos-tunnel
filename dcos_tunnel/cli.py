@@ -546,6 +546,40 @@ def run_vpn(command, output_file):
                            stderr=output_file)
 
 
+def resolve_docker_cmd(client, docker_cmd):
+    try_sudo = False
+    if docker_cmd is None:
+        docker_cmd = 'docker'
+        try_sudo = True
+    hint = "`{}` not a valid Docker client".format(docker_cmd)
+
+    ok, err = valid_docker_cmd(client, docker_cmd, hint)
+    if ok:
+        return docker_cmd
+    if try_sudo:
+        hint = ("Unable to run `docker` or `sudo docker` on the remote " +
+                "master. Try specifying a custom Docker client command " +
+                "using the --remote-docker argument.")
+        docker_cmd = 'sudo --non-interactive docker'
+        ok, err = valid_docker_cmd(client, docker_cmd, hint)
+        if ok:
+            return docker_cmd
+        docker_cmd = 'sudo -n docker'
+        ok, err = valid_docker_cmd(client, docker_cmd, hint)
+        if ok:
+            return docker_cmd
+    raise err
+
+
+def valid_docker_cmd(client, docker_cmd, hint):
+    scom = '{} version'.format(docker_cmd)
+    try:
+        ssh_exec_fatal(client, scom, hint=hint)
+    except DCOSException as e:
+        return (False, e)
+    return (True, None)
+
+
 def _vpn(port, config_file, user, privileged, ssh_port, host,
          openvpn_container, vpn_client, docker_cmd):
     """
@@ -603,24 +637,7 @@ def _vpn(port, config_file, user, privileged, ssh_port, host,
         logger.error(msg.format(vpn_client))
         return 1
 
-    try_sudo = False
-    if docker_cmd is None:
-        docker_cmd = 'docker'
-        try_sudo = True
-    scom = '{} version'.format(docker_cmd)
-    try:
-        hint = "`{}` not a valid Docker client".format(docker_cmd)
-        ssh_exec_fatal(client, scom, hint=hint)
-    except DCOSException:
-        if try_sudo:
-            docker_cmd = 'sudo --non-interactive ' + docker_cmd
-            scom = '{} version'.format(docker_cmd)
-            hint = ("Unable to run `docker` or `sudo docker` on the remote " +
-                    "master. Try specifying a custom Docker client command " +
-                    "using the --remote-docker argument.")
-            ssh_exec_fatal(client, scom, hint=hint)
-        else:
-            raise
+    docker_cmd = resolve_docker_cmd(client, docker_cmd)
 
     mesos_hosts, dns_hosts = gen_hosts(client)
     container_name = "openvpn-{}".format(rand_str(8))
