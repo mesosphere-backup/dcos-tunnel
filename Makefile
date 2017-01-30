@@ -23,5 +23,5 @@ packages:
 
 binary: clean env packages
 	${SHELL} -c ". env/bin/activate; \
-		pip install pyinstaller==3.1.1; \
+		pip install pyinstaller==3.2.1; \
 		pyinstaller binary/binary.spec"
