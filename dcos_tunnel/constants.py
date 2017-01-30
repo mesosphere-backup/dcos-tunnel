@@ -1,4 +1,4 @@
-version = '0.3.4a'
+version = '1.0.0'
 """DCOS Tunnel version"""
 
 privileged = 'DCOS_TUNNEL_PRIVILEGED'
