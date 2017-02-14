@@ -403,7 +403,7 @@ def _socks(port, config_file, user, privileged, ssh_port, host, option):
     scom = "ssh -N -D {} {} {}@{}".format(port, ssh_options, user, host)
 
     emitter.publish('SOCKS proxy listening on port {}'.format(port))
-    return subprocess.call(shlex.split(scom))
+    return subprocess_call(shlex.split(scom))
 
 
 def logging_exec(ssh_client, ssh_command, outputlog, raw=False):
@@ -541,7 +541,7 @@ def container_cp(ssh_client, container_name, remote_filepath, local_file,
 
 
 def run_vpn(command, output_file):
-    return subprocess.call(shlex.split(command),
+    return subprocess_call(shlex.split(command),
                            stdout=output_file,
                            stderr=output_file)
 
@@ -725,6 +725,31 @@ def _vpn(port, config_file, user, privileged, ssh_port, host,
         client.close()
         input('Exited. Temporary files will be gone once you hit <Return>.')
         return ret
+
+
+def subprocess_call(args, stdout=None, stderr=None):
+    """
+    THIS MUST BE USED INSTEAD OF subprocess
+    """
+
+    # https://github.com/pyinstaller/pyinstaller/issues/1759
+    #
+    # Pyinstaller insists on setting LD_LIBRARY_PATH. As a workaround for
+    # applications that care about this variable, they also set
+    # LD_LIBRARY_PATH_ORIG. We will take their suggestion of flipping this
+    # back around.
+
+    env = os.environ.copy()
+
+    ld_path = "LD_LIBRARY_PATH"
+    ld_path_orig = "{}_ORIG".format(ld_path)
+    if ld_path_orig in env:
+        env[ld_path] = env[ld_path_orig]
+        del env[ld_path_orig]
+    elif ld_path in env:
+        del env[ld_path]
+
+    return subprocess.call(args, stdout=stdout, stderr=stderr, env=env)
 
 
 if __name__ == "__main__":
