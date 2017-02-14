@@ -22,7 +22,6 @@ RUN apt-get update --fix-missing && apt-get install -y \
   python-virtualenv \
   sudo \
   zip \
-  && pip install pyinstaller pytest \
   && make binary \
   && mkdir -p tmp/bin \
   && cp -p dist/dcos-tunnel tmp/bin \
