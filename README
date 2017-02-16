@@ -59,5 +59,11 @@ make test
 Syntax check + Integration test:
 
 ```
-make test-binary
+sudo make test-binary
+```
+
+Single Integration test:
+
+```
+sudo make test-binary-single test=<test_name>
 ```
