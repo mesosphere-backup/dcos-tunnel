@@ -5,7 +5,14 @@ import subprocess
 import sys
 import time
 
+from dcos_tunnel import cli
+
 from common import ssh_output
+
+ssh_config_fmt = """\
+Host {host}
+    Port 22
+"""
 
 
 def test_empty_config():
@@ -17,6 +24,23 @@ def test_empty_config():
 
     f = open(config_file, 'w+')
     f.write("")
+    f.close()
+
+    _, _, ret, tret = _tunnel_runner("http", targs, args)
+    assert ret == 0
+    assert _tunnel_success(tret)
+
+
+def test_simple_config():
+    local_port = "8800"
+    config_file = "/tmp/dcos_tunnel_test_empty_config"
+    targs = ["--port", local_port, "--config-file", config_file]
+    args = ("curl -sS -v --proxy http://127.0.0.1:8800 " +
+            "--fail marathon.mesos.mydcos.directory")
+    host = cli.get_host("")
+
+    f = open(config_file, 'w+')
+    f.write(ssh_config_fmt.format(host=host))
     f.close()
 
     _, _, ret, tret = _tunnel_runner("http", targs, args)
