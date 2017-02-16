@@ -18,6 +18,11 @@ test-binary: test
 		pip install pytest; \
 		bin/test-binary.sh"
 
+test-binary-single:
+	${SHELL} -c ". env/bin/activate; \
+		pip install pytest; \
+		bin/test-binary.sh $(test)"
+
 packages:
 	bin/packages.sh
 

@@ -1,5 +1,7 @@
 #!/bin/bash -e
 
+single_test="$1"
+
 BASEDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/.."
 
 cd $BASEDIR
@@ -11,5 +13,9 @@ if [ -f "$BASEDIR/env/bin/activate" ]; then
 else
 	$BASEDIR/env/Scripts/activate
 fi
-py.test tests/integration
+if [ -n "$single_test" ]; then
+	py.test "tests/integration/test_cli.py::$single_test"
+else
+	py.test tests/integration
+fi
 deactivate
