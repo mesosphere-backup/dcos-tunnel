@@ -45,7 +45,7 @@ def test_vpn_lookup():
     args = ("ping -c1 $(host -t A master.mesos {} | ".format(dns_host) +
             "tail -n1 | rev | cut -f1 -d' ' | rev)")
 
-    _, _, ret, tret = _tunnel_runner("vpn", targs, args, sudo=True)
+    _, _, ret, tret = _tunnel_runner("vpn", targs, args)
     assert ret == 0
     assert _tunnel_success(tret)
     assert not _dangling_proc(['openvpn --config'])
@@ -65,7 +65,7 @@ def test_http_transparent_lookup():
     local_port = "80"
     targs = ["--port", local_port]
     args = "curl -sS -v --fail marathon.mesos.mydcos.directory"
-    _, _, ret, tret = _tunnel_runner("http", targs, args, sudo=True)
+    _, _, ret, tret = _tunnel_runner("http", targs, args)
     assert ret == 0
     assert _tunnel_success(tret)
 
@@ -84,8 +84,8 @@ def _dangling_proc(procstrlist):
     return False
 
 
-def _tunnel_runner(ttype, tunnel_args, args, delay=15, sudo=False):
-    tunnel = _tunnel(ttype, tunnel_args, sudo=sudo)
+def _tunnel_runner(ttype, tunnel_args, args, delay=15):
+    tunnel = _tunnel(ttype, tunnel_args)
     endtime = time.time() + delay
     while time.time() < endtime:
         stdout, stderr, ret = ssh_output(args)
@@ -95,16 +95,10 @@ def _tunnel_runner(ttype, tunnel_args, args, delay=15, sudo=False):
     if sys.platform == 'win32':
         os.kill(tunnel.pid, signal.CTRL_BREAK_EVENT)
     else:
-        if sudo:
-            cmd = ("sudo python -c 'import os, signal; "
-                   "os.killpg(os.getpgid({}), signal.SIGTERM)'"
-                   ).format(tunnel.pid)
-            subprocess.call(shlex.split(cmd))
-        else:
-            try:
-                os.killpg(os.getpgid(tunnel.pid), signal.SIGTERM)
-            except OSError:
-                print("ERROR: Process did not exist")
+        try:
+            os.killpg(os.getpgid(tunnel.pid), signal.SIGTERM)
+        except OSError:
+            print("ERROR: Process did not exist")
 
     tout, terr = tunnel.communicate()
     print('Runner STDOUT: {}'.format(tout.decode()))
@@ -122,15 +116,12 @@ def _tunnel_success(tunnel_returncode):
     return tunnel_returncode < 0
 
 
-def _tunnel(ttype, args, sudo=False):
+def _tunnel(ttype, args):
     cli_test_ssh_key_path = os.environ['CLI_TEST_SSH_KEY_PATH']
 
-    sudo_comm = ''
-    if sudo and not _is_privileged():
-        sudo_comm = 'sudo -E -n'
     cmd = ('ssh-agent /bin/bash -c "ssh-add {0} 2> /dev/null && ' +
-           '{1} $(which dcos-tunnel) tunnel {2} {3}"'
-           ).format(cli_test_ssh_key_path, sudo_comm, ttype, ' '.join(args))
+           '$(which dcos-tunnel) tunnel {1} {2}"'
+           ).format(cli_test_ssh_key_path, ttype, ' '.join(args))
 
     pfn = None
     if sys.platform != 'win32':
