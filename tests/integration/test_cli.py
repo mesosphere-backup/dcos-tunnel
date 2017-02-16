@@ -8,12 +8,29 @@ import time
 from common import ssh_output
 
 
+def test_empty_config():
+    local_port = "8800"
+    config_file = "/tmp/dcos_tunnel_test_empty_config"
+    targs = ["--port", local_port, "--config-file", config_file]
+    args = ("curl -sS -v --proxy http://127.0.0.1:8800 " +
+            "--fail marathon.mesos.mydcos.directory")
+
+    f = open(config_file, 'w+')
+    f.write("")
+    f.close()
+
+    _, _, ret, tret = _tunnel_runner("http", targs, args)
+    assert ret == 0
+    assert _tunnel_success(tret)
+
+
 def test_socks_lookup():
     targs = ["--option StrictHostKeyChecking=no", "--port", "1080"]
     args = ("curl -sS -v --proxy socks5h://127.0.0.1:1080 " +
             "--fail marathon.mesos.mydcos.directory")
-    _, _, ret = _tunnel_runner("socks", targs, args)
+    _, _, ret, tret = _tunnel_runner("socks", targs, args)
     assert ret == 0
+    assert _tunnel_success(tret)
 
 
 def test_vpn_lookup():
@@ -28,8 +45,9 @@ def test_vpn_lookup():
     args = ("ping -c1 $(host -t A master.mesos {} | ".format(dns_host) +
             "tail -n1 | rev | cut -f1 -d' ' | rev)")
 
-    _, _, ret = _tunnel_runner("vpn", targs, args, delay=10, sudo=True)
+    _, _, ret, tret = _tunnel_runner("vpn", targs, args, sudo=True)
     assert ret == 0
+    assert _tunnel_success(tret)
     assert not _dangling_proc(['openvpn --config'])
 
 
@@ -38,16 +56,18 @@ def test_http_lookup():
     targs = ["--port", local_port]
     args = ("curl -sS -v --proxy http://127.0.0.1:8800 " +
             "--fail marathon.mesos.mydcos.directory")
-    _, _, ret = _tunnel_runner("http", targs, args)
+    _, _, ret, tret = _tunnel_runner("http", targs, args)
     assert ret == 0
+    assert _tunnel_success(tret)
 
 
 def test_http_transparent_lookup():
     local_port = "80"
     targs = ["--port", local_port]
     args = "curl -sS -v --fail marathon.mesos.mydcos.directory"
-    _, _, ret = _tunnel_runner("http", targs, args, sudo=True)
+    _, _, ret, tret = _tunnel_runner("http", targs, args, sudo=True)
     assert ret == 0
+    assert _tunnel_success(tret)
 
 
 def _is_privileged():
@@ -64,10 +84,13 @@ def _dangling_proc(procstrlist):
     return False
 
 
-def _tunnel_runner(ttype, tunnel_args, args, delay=5, sudo=False):
+def _tunnel_runner(ttype, tunnel_args, args, delay=15, sudo=False):
     tunnel = _tunnel(ttype, tunnel_args, sudo=sudo)
-    time.sleep(delay)
-    stdout, stderr, ret = ssh_output(args)
+    endtime = time.time() + delay
+    while time.time() < endtime:
+        stdout, stderr, ret = ssh_output(args)
+        if ret == 0:
+            break
 
     if sys.platform == 'win32':
         os.kill(tunnel.pid, signal.CTRL_BREAK_EVENT)
@@ -84,10 +107,19 @@ def _tunnel_runner(ttype, tunnel_args, args, delay=5, sudo=False):
                 print("ERROR: Process did not exist")
 
     tout, terr = tunnel.communicate()
-    print('Runner STDOUT: {}'.format(tout.decode('utf-8')))
-    print('Runner STDERR: {}'.format(terr.decode('utf-8')))
+    print('Runner STDOUT: {}'.format(tout.decode()))
+    print('Runner STDERR: {}'.format(terr.decode()))
 
-    return (stdout, stderr, ret)
+    return (stdout, stderr, ret, tunnel.returncode)
+
+
+def _tunnel_success(tunnel_returncode):
+    """
+    The behavior we want from the tunnel is that it doesn't exit, and has
+    to be killed. Popen will return a negative exit code if the process is
+    killed, so that is what we want.
+    """
+    return tunnel_returncode < 0
 
 
 def _tunnel(ttype, args, sudo=False):

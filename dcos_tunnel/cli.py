@@ -309,7 +309,7 @@ def sshclient(config_file, user, port, host):
 
     config = parse_config(config_file, host)
     if port is None:
-        if config is not None and config['port']:
+        if config is not None and 'port' in config:
             port = config['port']
         else:
             port = 22
@@ -331,7 +331,7 @@ def parse_config(config_file, host):
     if not os.path.isfile(config_file):
         return None
 
-    config = paramiko.config.SSHConfig
+    config = paramiko.config.SSHConfig()
     f = open(config_file, 'r')
     config.parse(f)
     f.close()
