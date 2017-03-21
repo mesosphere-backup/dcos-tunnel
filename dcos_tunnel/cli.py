@@ -484,13 +484,31 @@ def _http(port, config_file, user, privileged, ssh_port, host, verbose):
     http_proxy = '/opt/mesosphere/bin/octarine'
     proxy_id = rand_str(16)
 
-    scom = http_proxy
-    if verbose:
-        scom += ' --verbose'
-    scom += " {}".format(proxy_id)
+    # A version was introduced to detect breaking changes in the proxy. As
+    # the version command did not always exist, if the command fails it is
+    # considered the "pre-version"
+    version_scom = "{} --version".format(http_proxy)
+    logger.debug("version command: {}".format(version_scom))
+    version, exitcode, stderr = must_ssh_query_int(client, version_scom)
+    if exitcode != 0:
+        msg = "failed to get version, assuming older executable: {}"
+        logger.debug(msg.format(stderr))
+        version = 0
+    logger.debug("proxy version: {}".format(version))
 
+    proxy_scom = http_proxy
+    if verbose:
+        proxy_scom += ' --verbose'
+    if version >= 1:
+        if port == 80:
+            proxy_scom += " --mode transparent"
+        else:
+            proxy_scom += " --mode standard"
+    proxy_scom += " {}".format(proxy_id)
+
+    logger.debug("proxy command: {}".format(proxy_scom))
     http_proxy_server = threading.Thread(target=logging_exec,
-                                         args=(client, scom, sys.stderr),
+                                         args=(client, proxy_scom, sys.stderr),
                                          daemon=True)
     http_proxy_server.start()
 
