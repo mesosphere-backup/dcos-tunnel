@@ -12,6 +12,7 @@ Usage:
                       [--privileged]
                       [--sport=<ssh_port>]
                       [--host=<host>]
+                      [--verbose]
                       [--option SSHOPT=VAL ...]
     dcos tunnel http [--port=<local-port>]
                      [--config-file=<path>]
@@ -26,6 +27,7 @@ Usage:
                     [--privileged]
                     [--sport=<ssh_port>]
                     [--host=<host>]
+                    [--verbose]
                     [--container=<container>]
                     [--client=<path>]
                     [--remote-docker=<docker-command>]
@@ -155,7 +157,7 @@ def _cmds():
         cmds.Command(
             hierarchy=['tunnel', 'socks'],
             arg_keys=['--port', '--config-file', '--user', '--privileged',
-                      '--sport', '--host', '--option'],
+                      '--sport', '--host', '--verbose', '--option'],
             function=_socks),
 
         cmds.Command(
@@ -167,7 +169,7 @@ def _cmds():
         cmds.Command(
             hierarchy=['tunnel', 'vpn'],
             arg_keys=['--port', '--config-file', '--user', '--privileged',
-                      '--sport', '--host', '--container', '--client',
+                      '--sport', '--host', '--verbose', '--container', '--client',
                       '--remote-docker'],
             function=_vpn),
     ]
@@ -196,6 +198,10 @@ def ssh_exec_fatal(client, scom, hint=None):
         if hint:
             msg += '\n*** {}'.format(hint)
         raise DCOSException(msg)
+
+
+def set_verbose():
+    util.configure_logger("debug")
 
 
 def forward_tunnel(local_port, remote_host, remote_port, transport):
@@ -365,7 +371,8 @@ def validate_port(port, default=None):
     return port
 
 
-def _socks(port, config_file, user, privileged, ssh_port, host, option):
+def _socks(port, config_file, user, privileged, ssh_port, host, verbose,
+           option):
     """
     SOCKS proxy into a DC/OS node using the IP addresses found in master's
     state.json
@@ -382,11 +389,16 @@ def _socks(port, config_file, user, privileged, ssh_port, host, option):
     :type ssh_port: int | None
     :param host: The host to connect to
     :type host: str | None
+    :param verbose: Verbose output
+    :type verbose: bool
     :param option: SSH option
     :type option: [str]
     :returns: process return code
     :rtype: int
     """
+
+    if verbose:
+        set_verbose()
 
     if privileged:
         os.environ[constants.privileged] = '1'
@@ -400,7 +412,12 @@ def _socks(port, config_file, user, privileged, ssh_port, host, option):
     ssh_options = util.get_ssh_options(config_file, option)
     host = get_host(host)
 
-    scom = "ssh -N -D {} {} {}@{}".format(port, ssh_options, user, host)
+    other_options = ''
+    if verbose:
+        other_options += ' -v'
+    scom = "ssh -N -D {} {} {} {}@{}".format(
+        port, ssh_options, other_options, user, host)
+    logger.debug('SSH command: "%s"', scom)
 
     emitter.publish('SOCKS proxy listening on port {}'.format(port))
     return subprocess_call(shlex.split(scom))
@@ -453,6 +470,9 @@ def _http(port, config_file, user, privileged, ssh_port, host, verbose):
     :returns: process return code
     :rtype: int
     """
+
+    if verbose:
+        set_verbose()
 
     if privileged:
         os.environ[constants.privileged] = '1'
@@ -580,7 +600,7 @@ def valid_docker_cmd(client, docker_cmd, hint):
     return (True, None)
 
 
-def _vpn(port, config_file, user, privileged, ssh_port, host,
+def _vpn(port, config_file, user, privileged, ssh_port, host, verbose,
          openvpn_container, vpn_client, docker_cmd):
     """
     VPN into a DC/OS cluster using the IP addresses found in master's
@@ -598,6 +618,8 @@ def _vpn(port, config_file, user, privileged, ssh_port, host,
     :type ssh_port: int | None
     :param host: The host to connect to
     :type host: str | None
+    :param verbose: Verbose output
+    :type verbose: bool
     :param openvpn_container: `docker pull <param>` should work
     :type openvpn_container: str
     :param vpn_client: Relative or absolute path to openvpn client
@@ -607,6 +629,9 @@ def _vpn(port, config_file, user, privileged, ssh_port, host,
     :returns: process return code
     :rtype: int
     """
+
+    if verbose:
+        set_verbose()
 
     if privileged:
         os.environ[constants.privileged] = '1'
