@@ -494,24 +494,12 @@ def _http(port, config_file, user, privileged, ssh_port, host, verbose):
                                          daemon=True)
     http_proxy_server.start()
 
-    scom = "{} --client --port {}".format(http_proxy, proxy_id)
-    remote_port = None
-    query_success = False
-    for i in range(5):
-        # XXX There's a really strange bug where stderr is bleeding into
-        #   stdout. What occurs is that a single line of the stderr sneaks
-        #   into stdout along with the intended stdout. Since this isn't a
-        #   problem with this code, we'll just retry several times.
-        _, query_stdout, _ = client.exec_command(scom, get_pty=True)
-        try:
-            remote_port = int(query_stdout.read().decode().strip())
-            query_success = True
-            break
-        except ValueError as e:
-            msg = "port query failed: {}"
-            logger.error(msg.format(repr(e)))
-    if not query_success:
-        raise DCOSException("*** Too many errors during port query")
+    port_scom = "{} --client --port {}".format(http_proxy, proxy_id)
+    logger.debug("port command: {}".format(port_scom))
+    remote_port, exitcode, stderr = must_ssh_query_int(client, port_scom)
+    if exitcode != 0:
+        msg = "*** port query non-zero exit code: {} stderr: {}"
+        raise DCOSException(msg.format(exitcode, stderr))
 
     msg = 'HTTP proxy listening locally on port {}, remotely on port {}'
     emitter.publish(msg.format(port, remote_port))
@@ -519,6 +507,38 @@ def _http(port, config_file, user, privileged, ssh_port, host, verbose):
 
     client.close()
     return 0
+
+
+def must_ssh_query_int(ssh_client, ssh_command):
+    res_int = None
+    query_success = False
+    for i in range(5):
+        # XXX There's a really strange bug where stderr is bleeding into
+        #   stdout. What occurs is that a single line of the stderr sneaks
+        #   into stdout along with the intended stdout. Since this isn't a
+        #   problem with this code, we'll just retry several times.
+
+        _, stdout, stderr = ssh_client.exec_command(ssh_command, get_pty=True)
+        stdout_str = stdout.read().decode().strip()
+        stderr_str = stderr.read().decode().strip()
+        exitcode = stdout.channel.recv_exit_status()
+        if exitcode != 0:
+            return (res_int, exitcode, stderr_str)
+
+        try:
+            res_int = int(stdout_str)
+            query_success = True
+        except ValueError as e:
+            msg = "ssh query int failed cmd: {} res: {}"
+            logger.error(msg.format(ssh_command, repr(e)))
+
+        if query_success:
+            break
+
+    if not query_success:
+        msg = "*** Too many errors during ssh query int cmd: {}"
+        raise DCOSException(msg.format(ssh_command))
+    return (res_int, exitcode, stderr_str)
 
 
 def is_privileged():
