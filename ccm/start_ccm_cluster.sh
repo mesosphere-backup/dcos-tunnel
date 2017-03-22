@@ -19,8 +19,8 @@ CLUSTER_ID=$(http --ignore-stdin \https://ccm.mesosphere.com/api/cluster/ \
      cluster_desc="DC/OS CLI testing cluster" \
      template=$CF_TEMPLATE_NAME \
      adminlocation=0.0.0.0/0 \
-     public_agents=0 \
-     private_agents=1 | \
+     public_agents=1 \
+     private_agents=0 | \
      jq ".id");
 
 echo $CLUSTER_ID
