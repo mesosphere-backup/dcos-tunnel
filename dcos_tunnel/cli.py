@@ -106,6 +106,7 @@ from dcos_tunnel import constants
 import paramiko
 
 logger = util.get_logger(__name__)
+util.configure_process_from_environ()
 emitter = emitting.FlatEmitter()
 
 # Always use get_pty=True with SSHClient.exec_command()! Otherwise the remote
@@ -401,6 +402,7 @@ def _socks(port, config_file, user, privileged, ssh_port, host, option):
     host = get_host(host)
 
     scom = "ssh -N -D {} {} {}@{}".format(port, ssh_options, user, host)
+    logger.info('SSH command: "%s"', scom)
 
     emitter.publish('SOCKS proxy listening on port {}'.format(port))
     return subprocess_call(shlex.split(scom))
