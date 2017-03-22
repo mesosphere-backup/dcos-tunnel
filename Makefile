@@ -10,23 +10,22 @@ clean-cache:
 env:
 	bin/env.sh
 
-test:
-	bin/test.sh
+test: env
+	${SHELL} -c ". env/bin/activate; \
+		bin/test.sh"
 
 test-binary: test
 	${SHELL} -c ". env/bin/activate; \
-		pip install pytest; \
 		bin/test-binary.sh"
 
-test-binary-single:
+test-binary-debug: env
 	${SHELL} -c ". env/bin/activate; \
-		pip install pytest; \
 		bin/test-binary.sh $(test)"
 
-packages:
-	bin/packages.sh
+packages: env
+	${SHELL} -c ". env/bin/activate; \
+		bin/packages.sh"
 
 binary: clean env packages
 	${SHELL} -c ". env/bin/activate; \
-		pip install pyinstaller==3.2.1; \
 		pyinstaller binary/binary.spec"
