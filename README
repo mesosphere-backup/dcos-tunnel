@@ -3,11 +3,8 @@
 A DC/OS CLI subcommand that provides SOCKS proxy, HTTP proxy, and VPN access
 to your DC/OS cluster.
 
-<br>
 This is **NOT** meant as a standalone but as an _installable subcommand_ through
 the _DC/OS Universe_.
-<br>
-<br>
 
 ## Development Setup
 Clone the git repo:
@@ -34,6 +31,8 @@ Try it out with:
 ```
 ./env/bin/dcos-tunnel
 ```
+
+The VPN container lives at [https://github.com/dcos/dcos-cli-vpn](https://github.com/dcos/dcos-cli-vpn)
 
 ### Binary
 
