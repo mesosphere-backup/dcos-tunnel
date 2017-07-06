@@ -35,7 +35,7 @@ Try it out with:
 ./env/bin/dcos-tunnel
 ```
 
-##Binary
+### Binary
 
 ```
 make binary
@@ -48,7 +48,7 @@ Run it with:
 ```
 
 
-##Running Tests
+### Running Tests
 
 Syntax check:
 
