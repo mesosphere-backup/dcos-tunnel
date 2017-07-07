@@ -100,7 +100,6 @@ import sys
 import threading
 
 import docopt
-
 from dcos import cmds, emitting, mesos, util
 from dcos.errors import DCOSException, DefaultError
 from dcos_tunnel import constants
