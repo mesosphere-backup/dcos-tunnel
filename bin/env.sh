@@ -3,7 +3,10 @@
 BASEDIR=`dirname $0`/..
 
 if [ ! -d "$BASEDIR/env" ]; then
-    virtualenv -p python3 -q $BASEDIR/env --prompt='(dcos-tunnel) '
+
+    # The current version of pyinstaller requires python 3.5
+    virtualenv -p python3.5 -q $BASEDIR/env --prompt='(dcos-tunnel) '
+
     echo "Virtualenv created."
 
     source $BASEDIR/env/bin/activate

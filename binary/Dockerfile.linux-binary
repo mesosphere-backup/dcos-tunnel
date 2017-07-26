@@ -1,8 +1,5 @@
-FROM ubuntu:15.04
+FROM ubuntu:16.04
 MAINTAINER support@mesosphere.com
-
-ADD . /dcos-tunnel
-WORKDIR /dcos-tunnel
 
 RUN apt-get update --fix-missing && apt-get install -y \
   build-essential \
@@ -14,15 +11,40 @@ RUN apt-get update --fix-missing && apt-get install -y \
   jq \
   libffi-dev \
   libssl-dev \
+  libbz2-dev \
+  libreadline6-dev \
+  libsqlite3-dev \
   make \
   openssh-client \
   openvpn \
-  python3-dev \
-  python-pip \
   python-virtualenv \
+  python3-dev \
+  python3-pip \
+  python3-venv \
   sudo \
-  zip \
-  && make binary \
+  zip
+
+WORKDIR /dcos-tunnel
+ENV WORKDIR /dcos-tunnel
+
+# Directories require individual COPY directives
+COPY bin $WORKDIR/bin
+COPY tests $WORKDIR/tests
+COPY dcos_tunnel $WORKDIR/dcos_tunnel
+COPY binary $WORKDIR/binary
+
+# Individual files can be combined
+COPY Makefile \
+    README \
+    README.md \
+    requirements.txt \
+    tox.ini \
+    setup.py \
+    $WORKDIR/
+
+RUN pwd && ls
+
+RUN make binary \
   && mkdir -p tmp/bin \
   && cp -p dist/dcos-tunnel tmp/bin \
   && cd tmp \

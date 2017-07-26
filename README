@@ -64,5 +64,5 @@ sudo make test-binary
 Single Integration test:
 
 ```
-sudo make test-binary-single test=<test_name>
+sudo make test-binary-debug test=<test_name>
 ```

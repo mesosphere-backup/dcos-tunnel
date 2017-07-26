@@ -122,7 +122,7 @@ def test_simple_config():
 
 
 def test_socks_lookup():
-    targs = ["--option StrictHostKeyChecking=no", "--port", "1080"]
+    targs = ["--option StrictHostKeyChecking=no", "--option UserKnownHostsFile=/dev/null", "--port", "1080"]
     url = "{}/ping".format(TEST_ADDR)
     cmd = "curl -sS -v --proxy socks5h://127.0.0.1:1080 --fail {}".format(url)
     success, tret = _tunnel_runner("socks", targs, cmd)
