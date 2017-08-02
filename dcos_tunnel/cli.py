@@ -31,6 +31,8 @@ Usage:
                     [--container=<container>]
                     [--client=<path>]
                     [--remote-docker=<docker-command>]
+                    [--addroute <ip-address> ...]
+                    [--delroute <ip-address> ...]
 
 Commands:
     socks
@@ -71,7 +73,7 @@ Options:
         Defaults to SOCKS:1080, HTTP:80, VPN:1194
     --container=<container>
         The OpenVPN container to run
-        [default: dcos/dcos-cli-vpn:1-1d6e59e4109beb78340304c0a24c7c0ced49c6c6]
+        [default: dcos/dcos-cli-vpn:2-bcccc2ba3a4d15e24d826deeecbf0601c8f76a4e]
     --client=<path>
         The OpenVPN client to run [default: openvpn]
     --privileged
@@ -83,10 +85,16 @@ Options:
         detect which host to connect to)
     --remote-docker=<docker-command>
         The Docker client command to run on the remote DC/OS master
+    --addroute <ip-address>
+        Add route to IPv4/IPv6 address (e.g. "192.168.1.0"), optionally with subnet (e.g. "192.168.1.0/32")
+    --delroute <ip-address>
+        Delete route to IPv4/IPv6 address (e.g. "192.168.1.0"), optionally with subnet (e.g. "192.168.1.0/32").
+        You must delete with the exact subnet that the range was added with.
 """
 
 import binascii
 import distutils.spawn
+import ipaddress
 import os
 import random
 import select
@@ -169,7 +177,7 @@ def _cmds():
             hierarchy=['tunnel', 'vpn'],
             arg_keys=['--port', '--config-file', '--user', '--privileged',
                       '--sport', '--host', '--verbose', '--container', '--client',
-                      '--remote-docker'],
+                      '--remote-docker', '--addroute', '--delroute'],
             function=_vpn),
     ]
 
@@ -546,7 +554,7 @@ def must_ssh_query_int(ssh_client, ssh_command):
             res_int = int(stdout_str)
             query_success = True
         except ValueError as e:
-            msg = "ssh query int failed cmd: {} res: {}"
+            msg = "*** ssh query int failed cmd: {} res: {}"
             logger.error(msg.format(ssh_command, repr(e)))
 
         if query_success:
@@ -567,26 +575,94 @@ def rand_str(n):
     return ''.join(random.SystemRandom().choice(choices) for _ in range(n))
 
 
-def gen_hosts(ssh_client):
-    dcos_client = mesos.DCOSClient()
-    mesos_hosts = []
-    dns_hosts = []
+class VPNHost(object):
+    def __init__(self, ssh_client, r_addroute, r_delroute):
+        self.dcos_client = mesos.DCOSClient()
+        self.dns_client = mesos.MesosDNSClient()
+        self.ssh_client = ssh_client
+        self.addroute = marshal_networks(r_addroute)
+        self.delroute = marshal_networks(r_delroute)
 
-    for host in mesos.MesosDNSClient().hosts('master.mesos.'):
-        mesos_hosts.append(host['ip'])
+    def gen_hosts(self):
+        """
+        route_hosts: Set of strings of form "ip_address netmask"
+        dns_hosts: Set of strings of form "ip_address"
+        """
 
-    summary = dcos_client.get_state_summary()
-    for host in summary['slaves']:
-        mesos_hosts.append(host['hostname'])
+        dns_hosts = self.gen_dns_hosts(self.delroute)
+        route_hosts = self.gen_route_hosts(self.addroute+dns_hosts, self.delroute)
 
-    scom = 'cat /etc/resolv.conf'
-    _, query_stdout, _ = ssh_client.exec_command(scom, get_pty=True)
-    for line in query_stdout.readlines():
-        if line.startswith('nameserver'):
-            host = line.strip().split()[1]
-            dns_hosts.append(host)
+        route_host_strs = set()
+        for h in route_hosts:
+            addr = h.network_address.exploded
+            netmask = h.netmask.exploded
+            route_host_strs.add("{} {}".format(addr, netmask))
 
-    return (mesos_hosts, dns_hosts)
+        dns_host_strs = set()
+        for h in dns_hosts:
+            dns_host_strs.add(h.network_address.exploded)
+
+        return (sorted(list(route_host_strs)), sorted(list(dns_host_strs)))
+
+    def gen_route_hosts(self, addroute, delroute):
+        r_route_hosts = []
+
+        for host in self.dns_client.hosts('master.mesos.'):
+            r_route_hosts.append(host['ip'])
+
+        summary = self.dcos_client.get_state_summary()
+        for host in summary['slaves']:
+            r_route_hosts.append(host['hostname'])
+
+        networks = marshal_networks(r_route_hosts)
+        return filter_networks(networks+addroute, delroute)
+
+    def gen_dns_hosts(self, delroute):
+        r_dns_hosts = []
+
+        scom = 'cat /etc/resolv.conf'
+        _, query_stdout, _ = self.ssh_client.exec_command(scom, get_pty=True)
+        for line in query_stdout.readlines():
+            if line.startswith('nameserver'):
+                host = line.strip().split()[1]
+                r_dns_hosts.append(host)
+        networks = marshal_networks(r_dns_hosts)
+        return filter_networks(networks, delroute)
+
+
+def marshal_networks(raw_networks):
+    networks = []
+    for a in raw_networks:
+        try:
+            networks.append(ipaddress.ip_network(a))
+        except ValueError:
+            logger.error("*** Failed to marshall addr: {}".format(repr(a)))
+    return networks
+
+
+def filter_networks(inputlist, cutset):
+    """
+    This only deletes from the inputlist if the exact address and netmask
+    in the cutset matches.
+
+    This has the disadvantage of not allowing fine-grained deletion of IP
+    addresses. A considered alternative was flattening (enumerating subnets
+    into individual IP addresses), but that is not feasible with the
+    possible number of IPv6 addresses.
+    """
+
+    outputlist = []
+    for e in inputlist:
+        accept = True
+        for c in cutset:
+            if e.exploded == c.exploded:
+                accept = False
+        if accept:
+            outputlist.append(e)
+    logger.info("filter_networks input: {}".format(repr(inputlist)))
+    logger.info("filter_networks cutset: {}".format(repr(cutset)))
+    logger.info("filter_networks outputlist: {}".format(repr(outputlist)))
+    return outputlist
 
 
 def container_cp(ssh_client, container_name, remote_filepath, local_file,
@@ -638,7 +714,7 @@ def valid_docker_cmd(client, docker_cmd, hint):
 
 
 def _vpn(port, config_file, user, privileged, ssh_port, host, verbose,
-         openvpn_container, vpn_client, docker_cmd):
+         openvpn_container, vpn_client, docker_cmd, addroute, delroute):
     """
     VPN into a DC/OS cluster using the IP addresses found in master's
     state.json
@@ -663,6 +739,10 @@ def _vpn(port, config_file, user, privileged, ssh_port, host, verbose,
     :type vpn_client: str
     :param docker_cmd: The docker client command
     :type docker_cmd: str | None
+    :param addroute: Add route to IPv4/IPv6 address with optional subnet
+    :type option: [str]
+    :param delroute: Delete route to IPv4/IPv6 address with optional subnet
+    :type option: [str]
     :returns: process return code
     :rtype: int
     """
@@ -701,7 +781,7 @@ def _vpn(port, config_file, user, privileged, ssh_port, host, verbose,
 
     docker_cmd = resolve_docker_cmd(client, docker_cmd)
 
-    mesos_hosts, dns_hosts = gen_hosts(client)
+    route_hosts, dns_hosts = VPNHost(client, addroute, delroute).gen_hosts()
     container_name = "openvpn-{}".format(rand_str(8))
     remote_openvpn_dir = "/etc/openvpn"
     remote_keyfile = "{}/static.key".format(remote_openvpn_dir)
@@ -711,7 +791,7 @@ def _vpn(port, config_file, user, privileged, ssh_port, host, verbose,
     for host in dns_hosts:
         emitter.publish(host)
 
-    parsed_routes = ','.join(mesos_hosts)
+    parsed_routes = ','.join(route_hosts)
     parsed_dns = ','.join(dns_hosts)
 
     with util.temptext() as server_tup, \
@@ -779,6 +859,7 @@ def _vpn(port, config_file, user, privileged, ssh_port, host, verbose,
 
         vpn_com = '{} --config {} --secret {} --port {}'
         vpn_com = vpn_com.format(vpn_client, clientconfigpath, keypath, port)
+        logger.info("Running VPN command: {}".format(vpn_com))
 
         emitter.publish("\nVPN server output at {}".format(serverpath))
         emitter.publish("VPN client output at {}\n".format(clientpath))
