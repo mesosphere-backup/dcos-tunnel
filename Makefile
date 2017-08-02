@@ -12,7 +12,8 @@ env:
 
 test: env
 	${SHELL} -c ". env/bin/activate; \
-		bin/test.sh"
+		bin/test.sh && \
+		pytest -vv tests/unit"
 
 test-binary: test
 	${SHELL} -c ". env/bin/activate; \
