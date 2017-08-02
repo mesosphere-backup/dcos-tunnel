@@ -93,7 +93,6 @@ Options:
 """
 
 import binascii
-import distutils.spawn
 import ipaddress
 import os
 import random
@@ -764,7 +763,8 @@ def _vpn(port, config_file, user, privileged, ssh_port, host, verbose,
 
     if not ((os.path.isfile(vpn_client) and os.access(vpn_client, os.X_OK)) or
             shutil.which(vpn_client)):
-        msg = "*** Not a valid executable: {}"
+        msg = ("*** Not a valid executable: {}\n" +
+               "*** Check that it is a valid absolute path, relative path, or in your $PATH")
         logger.error(msg.format(vpn_client))
         return 1
 
@@ -772,12 +772,6 @@ def _vpn(port, config_file, user, privileged, ssh_port, host, verbose,
     if port is None:
         return 1
     client = sshclient(config_file, user, ssh_port, host)
-
-    if not distutils.spawn.find_executable(vpn_client):
-        msg = ("You don't seem to have the '{}' executable. Please add it to "
-               "your $PATH or equivalent.")
-        logger.error(msg.format(vpn_client))
-        return 1
 
     docker_cmd = resolve_docker_cmd(client, docker_cmd)
 
