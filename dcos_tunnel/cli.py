@@ -33,6 +33,8 @@ Usage:
                     [--remote-docker=<docker-command>]
                     [--addroute <ip-address> ...]
                     [--delroute <ip-address> ...]
+                    [--disablevips]
+                    [--disableoverlay]
 
 Commands:
     socks
@@ -75,7 +77,7 @@ Options:
         The OpenVPN container to run
         [default: dcos/dcos-cli-vpn:2-bcccc2ba3a4d15e24d826deeecbf0601c8f76a4e]
     --client=<path>
-        The OpenVPN client to run [default: openvpn]
+        Path to the OpenVPN client to run [default: openvpn]
     --privileged
         Assume the user is of "superuser" or "Administrator" equivalent
     --sport=<ssh_port>
@@ -90,6 +92,10 @@ Options:
     --delroute <ip-address>
         Delete route to IPv4/IPv6 address (e.g. "192.168.1.0"), optionally with subnet (e.g. "192.168.1.0/32").
         You must delete with the exact subnet that the range was added with.
+    --disablevips
+        Disable auto-configuration of routes to VIPs.
+    --disableoverlay
+        Disable auto-configuration of routes to overlay networks.
 """
 
 import binascii
@@ -107,6 +113,8 @@ import sys
 import threading
 
 import docopt
+from dcos import config as dcosconfig
+from dcos import http as dcoshttp
 from dcos import cmds, emitting, mesos, util
 from dcos.errors import DCOSException, DefaultError
 from dcos_tunnel import constants
@@ -176,7 +184,8 @@ def _cmds():
             hierarchy=['tunnel', 'vpn'],
             arg_keys=['--port', '--config-file', '--user', '--privileged',
                       '--sport', '--host', '--verbose', '--container', '--client',
-                      '--remote-docker', '--addroute', '--delroute'],
+                      '--remote-docker', '--addroute', '--delroute',
+                      '--disablevips', '--disableoverlay'],
             function=_vpn),
     ]
 
@@ -575,12 +584,14 @@ def rand_str(n):
 
 
 class VPNHost(object):
-    def __init__(self, ssh_client, r_addroute, r_delroute):
+    def __init__(self, ssh_client, r_addroute, r_delroute, disablevips, disableoverlay):
         self.dcos_client = mesos.DCOSClient()
         self.dns_client = mesos.MesosDNSClient()
         self.ssh_client = ssh_client
         self.addroute = marshal_networks(r_addroute)
         self.delroute = marshal_networks(r_delroute)
+        self.disablevips = disablevips
+        self.disableoverlay = disableoverlay
 
     def gen_hosts(self):
         """
@@ -613,8 +624,45 @@ class VPNHost(object):
         for host in summary['slaves']:
             r_route_hosts.append(host['hostname'])
 
+        r_route_hosts += self.maybe_fetch_vip_routes()
+        r_route_hosts += self.maybe_fetch_overlay_routes()
+
         networks = marshal_networks(r_route_hosts)
         return filter_networks(networks+addroute, delroute)
+
+    def maybe_fetch_vip_routes(self):
+        """
+        Returns a list of strings
+        """
+
+        if self.disablevips:
+            return []
+
+        # Currently we do not have a good way to query this value.
+        return ['11.0.0.0/8']
+
+    def maybe_fetch_overlay_routes(self):
+        """
+        Returns a list of strings
+        """
+
+        if self.disableoverlay:
+            return []
+
+        subnets = []
+        data = self.overlay_info()
+        logger.debug("overlay info: {}".format(data))
+        for overlay in data['overlays']:
+            subnets.append(overlay['info']['subnet'])
+        return subnets
+
+    def overlay_info(self):
+        # XXX This methodology is copied from the dcos.mesos package, this can
+        # be removed once the upstream package has support for this field.
+
+        url = self.dcos_client.master_url('overlay-agent/overlay')
+        timeout = dcosconfig.get_config_val('core.timeout', dcosconfig.get_config())
+        return dcoshttp.get(url, timeout=timeout).json()
 
     def gen_dns_hosts(self, delroute):
         r_dns_hosts = []
@@ -713,7 +761,8 @@ def valid_docker_cmd(client, docker_cmd, hint):
 
 
 def _vpn(port, config_file, user, privileged, ssh_port, host, verbose,
-         openvpn_container, vpn_client, docker_cmd, addroute, delroute):
+         openvpn_container, vpn_client, docker_cmd, addroute, delroute,
+         disablevips, disableoverlay):
     """
     VPN into a DC/OS cluster using the IP addresses found in master's
     state.json
@@ -742,6 +791,10 @@ def _vpn(port, config_file, user, privileged, ssh_port, host, verbose,
     :type option: [str]
     :param delroute: Delete route to IPv4/IPv6 address with optional subnet
     :type option: [str]
+    :param disablevips: Disable auto-configuration of routes to VIPs.
+    :type option: bool
+    :param disableoverlay: Disable auto-configuration of routes to overlay networks.
+    :type option: bool
     :returns: process return code
     :rtype: int
     """
@@ -775,7 +828,7 @@ def _vpn(port, config_file, user, privileged, ssh_port, host, verbose,
 
     docker_cmd = resolve_docker_cmd(client, docker_cmd)
 
-    route_hosts, dns_hosts = VPNHost(client, addroute, delroute).gen_hosts()
+    route_hosts, dns_hosts = VPNHost(client, addroute, delroute, disablevips, disableoverlay).gen_hosts()
     container_name = "openvpn-{}".format(rand_str(8))
     remote_openvpn_dir = "/etc/openvpn"
     remote_keyfile = "{}/static.key".format(remote_openvpn_dir)
