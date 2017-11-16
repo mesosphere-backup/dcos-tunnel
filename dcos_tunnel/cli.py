@@ -652,8 +652,11 @@ class VPNHost(object):
         subnets = []
         data = self.overlay_info()
         logger.debug("overlay info: {}".format(data))
-        for overlay in data['overlays']:
-            subnets.append(overlay['info']['subnet'])
+
+        # Currently we do not have a IPv6 supported
+        for info in data['overlays']:
+            if 'subnet' in info['info']:
+                subnets.append(info['info']['subnet'])
         return subnets
 
     def overlay_info(self):
