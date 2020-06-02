@@ -29,4 +29,4 @@ wheel==0.24.0
 paramiko==1.17.1
 
 pytest==3.0.7
-PyInstaller==3.2.1
+PyInstaller==3.6
