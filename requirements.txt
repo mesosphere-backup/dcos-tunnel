@@ -12,7 +12,7 @@ pager==3.3
 pluggy==0.3.1
 portalocker==0.5.4
 prettytable==0.7.2
-py==1.4.31
+py==1.10.0
 Pygments==2.0.2
 pystache==0.5.4
 pytz==2015.7
