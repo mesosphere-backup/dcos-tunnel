@@ -26,7 +26,7 @@ toml==0.9.1
 tox==2.2.1
 virtualenv==13.1.2
 wheel==0.24.0
-paramiko==1.17.1
+paramiko==2.10.1
 
 pytest==3.0.7
 PyInstaller==3.2.1
